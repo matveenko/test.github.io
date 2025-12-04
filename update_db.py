@@ -12,6 +12,7 @@ SESSION_STRING = os.environ['TG_SESSION']
 CHANNEL_USERNAME = 'masonsmansion' 
 JSON_FILE = 'posts.json'
 
+# Только посты с этими эмодзи попадут в базу
 CATEGORY_MAP = {
     '⚔️': '⚔️ Жизнестойкость',
     '🧠': '🧠 Ошибки мышления',
@@ -21,8 +22,6 @@ CATEGORY_MAP = {
     '📜': '📜 Фольклор',
     '🔒': '🔒 Гайды/Отчеты'
 }
-
-DEFAULT_CATEGORY = '⚔️ Жизнестойкость'
 
 # Настройки фильтра
 MIN_LENGTH = 200
@@ -41,17 +40,28 @@ def update_json():
     # 2. Подключаемся к Телеграму
     print("Подключение к Telegram...")
     with TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH) as client:
-        # Лимит 50, чтобы не копать слишком глубоко
+        # Лимит 50
         for message in client.iter_messages(CHANNEL_USERNAME, limit=50):
             if not message.text:
                 continue
 
-            # === БЛОК ЧИСТКИ (ЖЕСТКИЙ) ===
+            # === ФИЛЬТР 1: ЭМОДЗИ (ФЕЙС-КОНТРОЛЬ) ===
+            found_category = None
+            for emoji_icon, cat_name in CATEGORY_MAP.items():
+                if emoji_icon in message.text:
+                    found_category = cat_name
+                    break
             
-            # 1. Вырезаем любое "// ПРОДОЛЖЕНИЕ ... //" независимо от регистра
+            # Если эмодзи из списка не нашли — пост идет лесом
+            if not found_category:
+                continue
+
+            # === ФИЛЬТР 2: ЧИСТКА МУСОРА ===
+            # Вырезаем "// ПРОДОЛЖЕНИЕ ... //"
             clean_text_body = re.sub(r'//\s*продолжение.*?//', '', message.text, flags=re.IGNORECASE | re.DOTALL).strip()
 
-            # 2. Если после чистки пост стал коротышом — нахуй его
+            # === ФИЛЬТР 3: ДЛИНА ===
+            # Если после чистки пост короче 200 символов — скипаем
             if len(clean_text_body) < MIN_LENGTH:
                 continue
             
@@ -61,24 +71,17 @@ def update_json():
 
             if post_url in existing_urls:
                 continue 
-
-            # Категория
-            category = DEFAULT_CATEGORY
-            for emoji_icon, cat_name in CATEGORY_MAP.items():
-                if emoji_icon in message.text:
-                    category = cat_name
-                    break
             
-            # Заголовок
+            # Формируем заголовок
             if '\n' in clean_text_body:
                 raw_title = clean_text_body.split('\n')[0].strip()
             else:
                 raw_title = clean_text_body 
 
-            # Чистим Markdown
+            # Чистим Markdown в заголовке
             clean_title = re.sub(r'[*_`]', '', raw_title)
             
-            # Доп. проверка заголовка
+            # Страховка от кривых заголовков
             if clean_title.startswith('//') or len(clean_title) < 3:
                 clean_title = "Без названия"
             
@@ -88,12 +91,11 @@ def update_json():
             new_post = {
                 "t": clean_title,
                 "u": post_url,
-                "c": category
+                "c": found_category  # Используем найденную категорию
             }
             
             posts.insert(0, new_post)
-            # ВОТ ТУТ ТЕПЕРЬ ПОКАЗЫВАЕТ КАТЕГОРИЮ 👇
-            print(f"✅ Добавлен пост: {clean_title} -> {category}")
+            print(f"✅ Добавлен пост: {clean_title} -> {found_category}")
 
     # 3. Сохраняем
     with open(JSON_FILE, 'w', encoding='utf-8') as f:
