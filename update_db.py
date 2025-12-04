@@ -5,16 +5,13 @@ from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
 
 # === КОНФИГ ===
-# Берем секреты из переменных окружения
 API_ID = os.environ['TG_API_ID']
 API_HASH = os.environ['TG_API_HASH']
 SESSION_STRING = os.environ['TG_SESSION']
 
-# Юзернейм открытого канала
 CHANNEL_USERNAME = 'masonsmansion' 
 JSON_FILE = 'posts.json'
 
-# Карта эмодзи -> Твои рубрики из data.js
 CATEGORY_MAP = {
     '⚔️': '⚔️ Жизнестойкость',
     '🧠': '🧠 Ошибки мышления',
@@ -29,7 +26,6 @@ DEFAULT_CATEGORY = '⚔️ Жизнестойкость'
 
 # Настройки фильтра
 MIN_LENGTH = 200
-TRASH_PHRASE = "// продолжение поста //"
 
 def update_json():
     # 1. Загружаем старую базу
@@ -39,52 +35,54 @@ def update_json():
     else:
         posts = []
 
-    # Собираем существующие ссылки, чтобы не дублировать
+    # Собираем существующие ссылки
     existing_urls = {p['u'] for p in posts}
     
     # 2. Подключаемся к Телеграму
     print("Подключение к Telegram...")
     with TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH) as client:
-        # Берем последние 50 постов
+        # Лимит 50, чтобы не копать слишком глубоко
         for message in client.iter_messages(CHANNEL_USERNAME, limit=50):
             if not message.text:
                 continue
 
-            # === БЛОК ЧИСТКИ И ФИЛЬТРАЦИИ ===
+            # === БЛОК ЧИСТКИ (ЖЕСТКИЙ) ===
             
-            # Сначала вырезаем мусорную фразу и чистим пробелы
-            clean_text_body = message.text.replace(TRASH_PHRASE, "").strip()
+            # 1. Вырезаем любое "// ПРОДОЛЖЕНИЕ ... //" независимо от регистра и содержания внутри слешей
+            # Флаг re.IGNORECASE позволяет ловить и "ПРОДОЛЖЕНИЕ", и "продолжение"
+            # Флаг re.DOTALL позволяет точке . захватывать переносы строк, если мусор размазан
+            clean_text_body = re.sub(r'//\s*продолжение.*?//', '', message.text, flags=re.IGNORECASE | re.DOTALL).strip()
 
-            # Если после чистки пост короче 200 символов - скипаем его нахуй
+            # 2. Если после чистки пост стал коротышом — нахуй его
             if len(clean_text_body) < MIN_LENGTH:
-                # print(f"Скипнут короткий пост (id {message.id}): {len(clean_text_body)} симв.")
+                # print(f"Скипнут мусор/коротыш: {len(clean_text_body)} симв.")
                 continue
             
             # =================================
 
-            # Ссылка на пост в открытом канале
             post_url = f"https://t.me/{CHANNEL_USERNAME}/{message.id}"
 
             if post_url in existing_urls:
-                continue # Уже есть
+                continue 
 
-            # Определяем категорию по эмодзи (ищем в оригинальном тексте, так надежнее)
+            # Категория
             category = DEFAULT_CATEGORY
             for emoji_icon, cat_name in CATEGORY_MAP.items():
                 if emoji_icon in message.text:
                     category = cat_name
                     break
             
-            # Заголовок берем из ОЧИЩЕННОГО текста
+            # Заголовок
             if '\n' in clean_text_body:
                 raw_title = clean_text_body.split('\n')[0].strip()
             else:
                 raw_title = clean_text_body 
 
-            # Чистим Markdown в заголовке
+            # Чистим Markdown
             clean_title = re.sub(r'[*_`]', '', raw_title)
             
-            if not clean_title:
+            # Доп. проверка: если заголовок все еще выглядит как системный мусор
+            if clean_title.startswith('//') or len(clean_title) < 3:
                 clean_title = "Без названия"
             
             if len(clean_title) > 100:
@@ -96,9 +94,8 @@ def update_json():
                 "c": category
             }
             
-            # Добавляем в начало
             posts.insert(0, new_post)
-            print(f"Добавлен пост: {clean_title} -> {category}")
+            print(f"✅ Добавлен пост: {clean_title}")
 
     # 3. Сохраняем
     with open(JSON_FILE, 'w', encoding='utf-8') as f:
