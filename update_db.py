@@ -27,6 +27,10 @@ CATEGORY_MAP = {
 
 DEFAULT_CATEGORY = '⚔️ Жизнестойкость'
 
+# Настройки фильтра
+MIN_LENGTH = 200
+TRASH_PHRASE = "// продолжение поста //"
+
 def update_json():
     # 1. Загружаем старую базу
     if os.path.exists(JSON_FILE):
@@ -42,10 +46,21 @@ def update_json():
     print("Подключение к Telegram...")
     with TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH) as client:
         # Берем последние 50 постов
-        # Для открытого канала используем username
         for message in client.iter_messages(CHANNEL_USERNAME, limit=50):
             if not message.text:
                 continue
+
+            # === БЛОК ЧИСТКИ И ФИЛЬТРАЦИИ ===
+            
+            # Сначала вырезаем мусорную фразу и чистим пробелы
+            clean_text_body = message.text.replace(TRASH_PHRASE, "").strip()
+
+            # Если после чистки пост короче 200 символов - скипаем его нахуй
+            if len(clean_text_body) < MIN_LENGTH:
+                # print(f"Скипнут короткий пост (id {message.id}): {len(clean_text_body)} симв.")
+                continue
+            
+            # =================================
 
             # Ссылка на пост в открытом канале
             post_url = f"https://t.me/{CHANNEL_USERNAME}/{message.id}"
@@ -53,19 +68,18 @@ def update_json():
             if post_url in existing_urls:
                 continue # Уже есть
 
-            # Определяем категорию по эмодзи
+            # Определяем категорию по эмодзи (ищем в оригинальном тексте, так надежнее)
             category = DEFAULT_CATEGORY
             for emoji_icon, cat_name in CATEGORY_MAP.items():
                 if emoji_icon in message.text:
                     category = cat_name
                     break
             
-            # Заголовок - первая строка
-            full_text = message.text.strip()
-            if '\n' in full_text:
-                raw_title = full_text.split('\n')[0].strip()
+            # Заголовок берем из ОЧИЩЕННОГО текста
+            if '\n' in clean_text_body:
+                raw_title = clean_text_body.split('\n')[0].strip()
             else:
-                raw_title = full_text 
+                raw_title = clean_text_body 
 
             # Чистим Markdown в заголовке
             clean_title = re.sub(r'[*_`]', '', raw_title)
