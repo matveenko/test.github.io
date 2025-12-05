@@ -7,6 +7,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         :root {
+            /* --- PALETTE --- */
             --bg-body: #1a1a1a;
             --bg-card: #2d2d2d;
             --text-main: #FFFFFF;
@@ -137,7 +138,7 @@
         }
         @keyframes pulse { 0% { box-shadow: 0 0 10px rgba(0, 212, 255, 0.3); } 50% { box-shadow: 0 0 25px rgba(0, 212, 255, 0.7); } 100% { box-shadow: 0 0 10px rgba(0, 212, 255, 0.3); } }
 
-        /* --- TOAST (Всплывашка) --- */
+        /* --- TOAST --- */
         .toast {
             position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px);
             background: rgba(20, 20, 20, 0.95); border: 1px solid var(--accent-purple);
@@ -149,10 +150,10 @@
         }
         .toast.show { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
 
-        /* --- MODAL CELEBRATION (Большая карточка) --- */
+        /* --- MODAL CELEBRATION --- */
         .celebration-modal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(8px);
+            background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(4px);
             z-index: 2000; display: flex; align-items: center; justify-content: center;
             opacity: 0; visibility: hidden; transition: all 0.4s;
         }
@@ -276,6 +277,37 @@
             border: 2px solid rgba(255,255,255,0.2);
         }
         .fab-dice:active { transform: scale(0.9) rotate(20deg); }
+
+        /* --- LOCKED CONTENT STYLES (ТВОИ НОВЫЕ СТИЛИ) --- */
+        .locked-content-wrapper {
+            position: relative;
+            margin-bottom: 30px;
+            background: #222;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #333;
+        }
+        .locked-text-preview {
+            font-size: 16px; line-height: 1.6; color: #ccc;
+            filter: blur(2px); /* Усилил блюр, чтобы не читали */
+            opacity: 0.7;
+            max-height: 180px; overflow: hidden; position: relative;
+            user-select: none;
+        }
+        .locked-overlay {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, rgba(34,34,34,0.2), rgba(34,34,34,0.9) 80%, #222 100%);
+            z-index: 10; pointer-events: none;
+        }
+        .locked-action-container {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 90%; z-index: 20; text-align: center;
+        }
+        .quote-highlight {
+            border-left: 3px solid var(--danger-red); padding-left: 15px;
+            font-style: italic; color: #fff; margin-bottom: 10px;
+        }
+
     </style>
 </head>
 <body>
@@ -352,6 +384,8 @@
         <div class="sheet-category" id="sheetCategory">РУБРИКА</div>
         <div class="sheet-title" id="sheetTitle">Заголовок статьи</div>
         
+        <div id="lockedContentArea" style="display: none;"></div>
+
         <div class="sheet-actions" id="sheetActions">
             <button class="btn-main" id="readBtn">ЧИТАТЬ СТАТЬЮ 🔥</button>
             <button class="btn-icon" id="favSheetBtn">⭐️</button>
@@ -367,15 +401,15 @@
         <button class="upsell-btn" id="upsellBtn">🎁 Забрать секретные материалы (Бот)</button>
     </div>
 
+    <script src="data.js"></script>
+
     <script>
         const tg = window.Telegram.WebApp;
-        
-        // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
         let db = []; 
         const categoriesMap = new Map();
         const uniqueCategoriesList = []; 
         
-        const STATE_KEY = 'mm_hub_state_v9'; 
+        const STATE_KEY = 'mm_hub_state_v8'; 
         const READ_KEY = 'mm_read_posts';
         const FAV_KEY = 'mm_favorites';
         const NOTIFIED_KEY = 'mm_notified_achievements'; 
@@ -427,6 +461,29 @@
         const celMsg = document.getElementById('celMsg');
         const celBtn = document.querySelector('.cel-btn');
         const toast = document.getElementById('toast');
+        const lockedContentArea = document.getElementById('lockedContentArea');
+        // === РУЧНЫЕ ОПИСАНИЯ ДЛЯ ЗАКРЫТЫХ ПОСТОВ ===
+        // Ключ — это 'u' (ссылка или ID из posts.json)
+        const CUSTOM_PREVIEWS = {
+            "locked_triada": `
+                <div style="font-weight:800; margin-bottom:10px; color:#fff;">ТЕОРИЯ И ПРАКТИКА СОБЛАЗНЕНИЯ: Эпоха пост-секса</div>
+                <div style="font-size:13px; color:#777; margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">4 пути развития событий</div>
+                <div class="quote-highlight">
+                    "Она будет плакать, умолять, но никогда не уйдет. Потому что ты стал её наркотиком..."
+                </div>
+                <p>Начиная с этого момента, вероятности дальнейшего развития событий начинают множиться. Наша задача, как и всегда, не щёлкать клювом и грамотно оценивать обстановку.</p>
+            `,
+            
+            "locked_testo": `
+                <div style="font-weight:800; margin-bottom:10px; color:#fff;">РАДИКАЛЬНОЕ УЛУЧШЕНИЕ ЗДОРОВЬЯ. АНАЛИЗЫ.</div>
+                <p>идеальные биомаркеры для мужчин</p>
+                <p>Короче, мы о тебе кое-что знаем. Вот списОчек твоего ежедневного "перфоманса":</p>
+                <div class="quote-highlight">
+                Утром еле отлепляешь блять глаза в надежде поскорее сдохнуть. Вечером косплеишь Walking Dead, сил нет даже на секс. Абонемент в зал ты купил, красава. Сходил за последний месяц 1 раз и чуть не умер. Ссыкуешь сходить к врачу, потому что знаешь, шо там пиздец полный будет."
+                </div>
+            `
+            // Добавляй сюда новые по мере появления закрытых постов
+        };
 
         // === ИНИЦИАЛИЗАЦИЯ И ЗАГРУЗКА ===
         async function initApp() {
@@ -436,13 +493,14 @@
             tg.setBackgroundColor('#1a1a1a');
 
             try {
-                // Пытаемся загрузить JSON
                 const response = await fetch('posts.json?v=' + Date.now());
-                if (!response.ok) throw new Error("Ошибка сети или файл не найден");
-                
+                if (!response.ok) throw new Error("Ошибка сети");
                 db = await response.json();
-
-                // Данные загружены, считаем категории и рендерим
+                db.forEach(post => {
+                    if (CUSTOM_PREVIEWS[post.u]) {
+                        post.preview = CUSTOM_PREVIEWS[post.u];
+                    }
+                });
                 calculateCategories();
                 updateFavCard();
                 renderHomeTiles();
@@ -451,23 +509,17 @@
                 restoreState();
 
             } catch (error) {
-                console.error("Ошибка инициализации:", error);
-                document.body.innerHTML = `<div style="color:#fff; text-align:center; padding:50px;">
-                    <h2>Ошибка загрузки</h2>
-                    <p>Не удалось получить данные.</p>
-                    <p style="font-size:12px; color:#666">${error.message}</p>
-                </div>`;
+                console.error(error);
             }
             window.addEventListener('resize', adjustPadding);
         }
 
         function calculateCategories() {
             categoriesMap.clear();
-            uniqueCategoriesList.length = 0; // Очищаем массив
+            uniqueCategoriesList.length = 0; 
             
             db.forEach(item => {
-                if(item.locked) return; // Пропускаем закрытые статьи для плиток
-                
+                if(item.locked) return; 
                 const parts = item.c.split(' ');
                 const icon = parts[0];
                 const name = parts.slice(1).join(' ');
@@ -477,11 +529,8 @@
                 }
                 categoriesMap.get(item.c).count++;
             });
-            // Переносим из Map в Array
             uniqueCategoriesList.push(...Array.from(categoriesMap.values()));
         }
-
-        // === ФУНКЦИИ ИНТЕРФЕЙСА ===
 
         function showToast(msg) {
             toast.innerText = msg;
@@ -542,7 +591,6 @@
         }
 
         function updateProgress() {
-            // Если база пустая, выходим
             if (!db || db.length === 0) return;
 
             const totalPosts = db.filter(item => !item.locked).length;
@@ -779,10 +827,7 @@
             localStorage.removeItem(STATE_KEY);
             updateFavCard();
             updateProgress();
-            
-            if(pendingAchievements.length > 0) {
-                showNextAchievement();
-            }
+            if(pendingAchievements.length > 0) showNextAchievement();
         }
 
         function switchToList(category, animate = true) {
@@ -956,34 +1001,78 @@
             openSheet(randomItem);
         }
 
+        // === OPEN SHEET LOGIC ===
         function openSheet(item) {
             tg.HapticFeedback.impactOccurred('medium');
             sheetTitle.innerText = item.t;
             const catIcon = item.c.split(' ')[0];
             sheetCategory.innerHTML = `<span style="font-size: 18px;">${catIcon}</span> ${item.c.substring(catIcon.length)}`;
             
-            if(item.locked) {
+            // СБРОС (на всякий случай)
+            lockedContentArea.innerHTML = '';
+            lockedContentArea.style.display = 'none';
+            sheetActions.style.display = 'flex';
+            lockedBtn.style.display = 'none';
+
+            if (item.locked) {
                 sheetActions.style.display = 'none';
-                lockedBtn.style.display = 'block';
-                lockedBtn.onclick = () => { tg.openTelegramLink('https://t.me/GiftsHolyInquisition_bot'); };
+                
+                const defaultTeaser = `
+                    <div style="font-weight:800; margin-bottom:10px; color:#fff;">НЕНАВИСТЬ — ТОПЛИВО С НУЛЕВЫМ КПД</div>
+                    <div style="font-size:13px; color:#777; margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">прокоптили потолок горящей жопой</div>
+                    <div class="quote-highlight">
+                        "Я сам годами сидел на этой игле. Чистая, концентрированная ненависть ко всему. К себе, к уебищам вокруг, к самой ебаной реальности..."
+                    </div>
+                    <p>Когда ты никто, звать тебя никак, мир тебя пиздит ногами — ненависть кажется спасением. Но это ловушка, которая сжирает тебя изнутри, пока ты думаешь, что она дает тебе силу.</p>
+                    <p>На самом деле, единственный способ выбраться из этой ямы — это понять механику...</p>
+                `;
+
+                const lockedHTML = `
+                    <div class="locked-content-wrapper">
+                        <div class="locked-text-preview">
+                            ${item.preview ? item.preview : defaultTeaser}
+                        </div>
+                        <div class="locked-overlay"></div>
+                        <div class="locked-action-container">
+                            <div style="font-size:40px; margin-bottom:10px;">🔒</div>
+                            <button class="btn-inq-action" id="lockedBtnAction" style="width:100%; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+                                РАЗБЛОКИРОВАТЬ В ИНКВИЗИЦИИ
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                lockedContentArea.innerHTML = lockedHTML;
+                lockedContentArea.style.display = 'block';
+                
+                document.getElementById('lockedBtnAction').onclick = () => {
+                    tg.HapticFeedback.impactOccurred('heavy');
+                    tg.openTelegramLink('https://t.me/GiftsHolyInquisition_bot');
+                };
             } else {
                 sheetActions.style.display = 'flex';
-                lockedBtn.style.display = 'none';
                 
-                setRead(item.u);
-                
+                // 1. КНОПКА ЧИТАТЬ
                 readBtn.onclick = () => {
                     tg.HapticFeedback.impactOccurred('light');
+                    // ВОТ ТУТ МЫ ЗАСЧИТЫВАЕМ ПРОЧТЕНИЕ
+                    setRead(item.u);
+                    
                     saveState();
                     tg.openTelegramLink(item.u);
+                    
+                    // Обновляем UI в фоне (чтобы галочка появилась, когда вернешься)
+                    filterAndRenderList(false);
                 };
 
+                // 2. КНОПКА SHARE
                 shareBtn.onclick = () => {
                     tg.HapticFeedback.impactOccurred('light');
                     const shareUrl = 'https://t.me/share/url?url=' + encodeURIComponent(item.u) + '&text=' + encodeURIComponent(item.t);
                     tg.openTelegramLink(shareUrl);
                 };
 
+                // 3. КНОПКА FAV
                 const isFav = getFav().includes(item.u);
                 updateFavBtnStyle(isFav);
                 favSheetBtn.onclick = () => {
@@ -1014,10 +1103,6 @@
             }
             modalOverlay.classList.add('active');
             postSheet.classList.add('active');
-            
-            if(!item.locked && !document.querySelector(`.post-card[onclick*="${item.u}"]`)?.classList.contains('is-read')) {
-                 filterAndRenderList(false);
-            }
         }
 
         function updateFavBtnStyle(isActive) {
