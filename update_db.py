@@ -64,7 +64,7 @@ def update_json():
             # Если после чистки пост короче 200 символов — скипаем
             if len(clean_text_body) < MIN_LENGTH:
                 continue
-            
+            print(f"🔍 Чек поста {message.id}: {message.text[:30]}...")
             # =================================
 
             post_url = f"https://t.me/{CHANNEL_USERNAME}/{message.id}"
